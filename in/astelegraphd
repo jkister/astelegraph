@@ -1,0 +1,328 @@
+#!__PERL__
+
+# Astelegraph - Outbound Faxing Glue between Asterisk and Samba
+# Copyright (C) 2016 Jeremy Kister
+# http://gitub.com/jkister/astelegraph
+# http://jeremy.kister.net/
+
+use strict;
+use Getopt::Std;
+use Sys::Syslog;
+use Time::Local;
+use Linux::Inotify2;
+use POSIX qw(setsid strftime);
+use Sys::SigAction qw(set_sig_handler);
+
+my %opt;
+getopts('Dfhv', \%opt);
+# Debug
+# config file
+# foreground
+# help
+# version
+
+help() && exit if $opt{h};
+VERSION() && exit if $opt{v};
+
+my $NAME = 'astelegraph';
+my $VERSION = '__VERSION__';
+
+my %CONFIG;
+$CONFIG{config} ||= '__SYSCONFDIR__/astelegraph.cfg';
+if( open(my $confg, $CONFIG{config}) ){
+    while(<$confg>){
+        chop;
+        s/;.*//;
+        s/#.*//;
+        next if /^\s*$/;
+        if( /^(\S+)\s*:\s*(\S+)$/ ){
+            $CONFIG{$1} = $2;
+        }else{
+            slowerr( "invalid config: $_" );
+        }
+    }
+    close $confg;
+}
+if( $opt{D} ){
+    # overrides config file
+    $CONFIG{debug} = $opt{D};
+}
+$CONFIG{faxcontext} ||= 'astelegraph';
+$CONFIG{outcontext} ||= 'outbound';
+$CONFIG{extension}  ||= 'tx';
+$CONFIG{piddir}     ||= '/var/run';
+$CONFIG{username}   ||= 'nobody';
+$CONFIG{facility}   ||= 'local6';
+$CONFIG{spooldir}   ||= '/var/spool/asterisk';
+
+openlog($NAME,'pid',$CONFIG{facility});
+
+my %DIR = ( vsa =>  $CONFIG{spooldir},
+            out => "$CONFIG{spooldir}/fax/out",
+            raw => "$CONFIG{spooldir}/fax/raw",
+            tmp => "$CONFIG{spooldir}/fax/tmp",
+            rpt => "$CONFIG{spooldir}/fax/rpt",
+          );
+
+my ($uid,$gid) = (getpwnam($CONFIG{username}))[2,3];
+
+for my $dir (keys %DIR){
+    next if -d $DIR{$dir};
+
+    mkdir( $DIR{$dir}, 0755 ) || slowerr( "cannot mkdir $DIR{dir}: $!" );
+    chown( $uid, $gid, $DIR{dir} ) || slowerr( "cannot chown $DIR{dir}: $!" );
+}
+
+my $childpid;
+daemonize(60) unless $opt{f};
+
+set_sig_handler('ALRM', sub { die "timeout!\n"; } );
+set_sig_handler('USR1', sub { $CONFIG{debug} = $CONFIG{debug} ? undef : 1; } );
+
+if( $> == 0 || $< == 0){
+    if( $uid && $gid ){
+        verbose( "switching to $uid/$gid" );
+        $! = 0;
+        $( = $) = $gid;
+        slowerr( "unable to chgid $CONFIG{username}: $!" ) if $!;
+        $< = $> = $uid;
+        slowerr( "unable to chuid $CONFIG{username}: $!" ) if $!;
+    }else{
+        slowerr( "cannot chid to $CONFIG{username}: uid for $CONFIG{username} not found." );
+    }
+}else{
+    slowerr( "cannot chid when not running as root." ) unless( $uid == $> );
+}
+
+
+verbose( "starting." );
+
+my $i = Linux::Inotify2->new || die "cannot create object: $!\n";
+
+# nb IN_CLOSE_WRITE doesnt deal with mv
+$i->watch($DIR{rpt}, IN_CREATE,
+    sub {
+        my $e = shift;
+        my $fname = $e->fullname;
+    
+        my $addr = $fname;
+        $addr =~ s#.*/##;
+        $addr =~ s#~.*##;
+
+        verbose( "sending report email to: $addr" );
+
+        if( open(my $sm, "|sendmail -t -f $CONFIG{mailfrom}") ){
+            my $date = strftime("%a, %d %b %Y %H:%M:%S %z", localtime(time()));
+            print $sm "To: $addr\n",
+                      "From: $CONFIG{mailfrom}\n",
+                      "Subject: astelegraph report\n",
+                      "Date: $date\n",
+                      "\n";
+            if( open(my $report, $fname) ){
+                while(<$report>){
+                    chomp;
+                    print $sm "$_\n";
+                }
+                close $report;
+                close $sm;
+                unlink($report);
+            }else{
+                verbose( "cant open report file: ", $! );
+                return;
+            }
+        }else{
+            verbose( "cant open pipe to sendmail: ", $! );
+            return
+        }
+    }
+);
+
+$i->watch($DIR{raw}, IN_CREATE,
+    sub {
+        my $e = shift;
+        my $fname = $e->fullname;
+        debug( "file change: " . $fname );
+
+        unless( $fname =~ m#/([^\/]+)\.(pdf|ps|tiff)$#i ){
+            verbose( "file pattern fail: $fname" );
+            unlink($fname);
+            return;
+        }
+        my ($data,$type) = ($1,$2);
+
+        debug( "data: $data - type: $type" );
+
+        my %dest;
+        if( $data =~ /^(\d*(?:\d{10}))-?/ ){ # 10 digit minimum
+            $dest{phone} = $1;
+        }else{
+            verbose( "unkown filename format: ", $fname );
+            unlink($fname);
+            return;
+        }
+
+        if( $data =~ /-([^@\s]+@[^@\s]+\.[a-z]+)-?/i ){ # very rough, meh.
+            $dest{report} = $1;
+            debug( "caught report email address: ", $dest{report} );
+        }
+        if( $data =~ /-(\d{12})-?/ ){ ## YYYYMMDDHHSS
+            $dest{time} = $1;
+            debug( "caught timestamp: ", $dest{time} );
+        }
+
+        my $rand  = rand(99);
+        my $spool = "$DIR{out}/$dest{phone}.$rand.tif";
+        if( $type =~ /tiff?/i ){
+            # nothing needed except rename
+            unless( rename($fname,$spool) ){
+                verbose( "can't rename $fname to $spool: ", $! );
+                unlink($fname);
+                return;
+            }
+            debug( "renamed $fname to $spool" );
+        }elsif( $type =~ /(?:pdf|ps)/i ){
+            my @arg = ( qw/gs -dNOPAUSE -q -sDEVICE=tiffg4 -dBATCH/,
+                        "-sOutputFile=${spool}",
+                        ${fname}
+                      );
+            unless( system( @arg ) == 0 ){
+                unlink($fname);
+                verbose( "gs fail: $?" );
+                return;
+            }
+            unlink($fname);
+        }else{
+            verbose( "unkown file format: ", $type );
+            unlink($fname);
+            return;
+        }
+
+        verbose( "set up $spool for $dest{phone}" );
+
+        my $cfile = $dest{phone} . '.' . $rand . '.call';
+        if( open(my $call, ">$DIR{tmp}/$cfile") ){
+            print $call <<__EOC__
+Channel: Local/$dest{phone}\@$CONFIG{outcontext}
+MaxRetries: 5
+WaitTime: 45
+Context: $CONFIG{faxcontext}
+Extension: $CONFIG{extension}
+Priority: 1
+Set: DEST=$dest{phone}
+Set: TXFILE=${spool}
+__EOC__
+            ;
+            if( $dest{report} ){
+                print $call "Set: RPTDIR=$DIR{rpt}\n",
+                            "Set: RPTADDR=$dest{report}~${rand}\n";
+            }
+            close $call;
+        }else{
+            verbose( "couldnt write to callfile: ", $! );
+            unlink($fname);
+            return;
+        }
+
+        if( $dest{time} ){
+            my($year,$mon,$day,$hour,$min) = $dest{time} =~ /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/;
+            $year -= 1900;
+            $mon--;
+            my $time = timelocal(0,$min,$hour,$day,$mon,$year);
+            debug( "setting time on $cfile: ", $time );
+            unless( utime($time, $time, "$DIR{tmp}/$cfile") ){
+                verbose( "cant set utime on $cfile: ", $! );
+                unlink("$DIR{tmp}/$cfile");
+                unlink($fname);
+                unlink($spool);
+                return;
+            }
+        }
+        unless( rename("$DIR{tmp}/$cfile", "$DIR{vsa}/outgoing/$cfile") ){
+            verbose( "can't rename tmp/$cfile outgoing/$cfile: ", $! );
+            unlink("$DIR{tmp}/$cfile");
+            unlink($fname);
+            unlink($spool);
+            return;
+        }
+        
+        verbose( "set up $cfile for $dest{phone}" );
+    }
+);
+
+1 while $i->poll;
+
+sub verbose {
+    my ($msg) = join('', @_);
+        
+    warn "$msg\n" if $opt{f};
+    syslog( 'info', $msg );
+}
+
+sub debug {
+    verbose @_ if $CONFIG{debug};
+}
+
+sub slowerr {
+    verbose @_;
+
+    sleep 15;
+    exit 1;
+}
+
+
+sub daemonize {
+    my $to = shift;
+
+    chdir('/');
+    fork && exit;
+    close STDIN;   open( STDIN,  '<',  "/dev/null" );
+    close STDOUT;  open( STDOUT, '>>', "/dev/null" );
+    close STDERR;  open( STDERR, '>>', "/dev/null" );
+    setsid();
+
+    $SIG{HUP} = $SIG{QUIT} = $SIG{INT} = $SIG{TERM} = sub { sighandler( @_ ) };
+
+    open(my $pid, ">/$CONFIG{piddir}/$NAME.pid") || die "cannot write to $CONFIG{piddir}/$NAME.pid: $!\n";
+    print $pid "$$\n";
+    close $pid;
+
+    # run as 2 processes
+    while( 1 ){
+        if( $childpid = fork ){
+            # parent
+            wait;
+            my $xcode = $?;
+            $childpid = undef;
+            verbose( "$NAME exited with code $xcode - restarting" );
+            sleep $to;
+        }else{
+            # child
+            return;
+        }
+    }
+}
+
+sub sighandler {
+    unlink( "$CONFIG{piddir}/$NAME.pid" ) || verbose( "cannot unlink $CONFIG{piddir}/$NAME.pid: $!" );
+    kill "TERM", $childpid;
+    wait;
+    verbose( "caught signal SIG$_[0] - exiting" );
+    exit;
+}
+
+sub help {
+    print <<__EOH__;
+    -D Debug enable
+    -c config file [__SYSCONFDIR__/astelegraph.cfg]
+    -f run in foreground
+    -h this help message
+    -v show version
+__EOH__
+    ;
+    exit;
+}
+
+sub VERSION {
+    print "$VERSION\n";
+    exit;
+}

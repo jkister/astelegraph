@@ -1,0 +1,90 @@
+
+# this is how i installed asterisk 11 on debian 7.9
+# no dahdi is necessary, unless you need it.
+
+apt-get update
+apt-get -y install linux-headers-$(uname -r) 
+
+###EITHER###########################
+apt-get -y install  dahdi-source dahdi-linux dahdi
+# OR ###############################
+cd /usr/local/src
+wget 'http://downloads.asterisk.org/pub/telephony/dahdi-linux-complete/dahdi-linux-complete-current.tar.gz'
+wget 'http://downloads.asterisk.org/pub/telephony/libpri/libpri-1.4-current.tar.gz'
+tar -xvf libpri-1.4-current.tar.gz
+tar -xf dahdi-linux-complete-current.tar.gz 
+rm lib*.tar.gz
+rm dahdi*.tar.gz
+cd dahdi-*
+make -j2
+make install
+make config
+cd ../libpri*
+make -j2
+################################
+
+
+apt-get -y install binutils binutils-dev \
+  curl \
+  g++ git  \
+  libjansson-dev \
+  libcurl4-openssl-dev \
+  libncurses5-dev libnewt-dev  libspandsp-dev \
+  libiksemel-dev libiksemel3 \
+  libncurses5 libncurses5-dev \
+  libsnmp-dev libspandsp2 libsqlite3-0 libsqlite3-dev libssl-dev \
+  libtiff-tools \
+  libuuid-perl libuuid1 uuid-dev  \
+  libtonezone-dev libxml2 libxml2-dev \
+  openssl \
+  snmp snmpd subversion  sqlite3 \
+  tcpdump
+
+mkdir -p /usr/local/src/configs/
+cat <<__EOC__ > /usr/local/src/configs/%%-asterisk
+#!/bin/sh
+
+./configure
+
+contrib/scripts/get_mp3_source.sh
+#contrib/scripts/get_ilbc_source.sh
+
+cat <<__EOF__
+# unset LANG
+# make menuselect
+# make
+# make install
+__EOF__
+__EOC__
+
+mkdir -p /usr/local/src/asterisk
+cd /usr/local/src/asterisk
+wget http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-11-current.tar.gz
+tar -zxvf aster*
+bash ../../configs/%%-asterisk
+unset LANG
+make -j2 menuselect
+### format_mp3
+### chan_dahdi
+### res_fax
+### NO SOUNDS GSM
+### SOUNDS ULAW
+### NO SOUNDS EXTENDED GSM
+### SOUNDS EXTENDED ULAW
+### DONT OPTIMIZE
+### DEBUG
+### BETTER BACKTRACE
+make -j2 menuselect
+make install
+make samples
+make config # initscript
+make install-logrotate
+
+
+cd /etc/asterisk
+mkdir -p samples
+mv * samples
+
+
+## chan_dahdi.so in /etc/asterisk/modules.conf
+

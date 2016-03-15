@@ -1,0 +1,24 @@
+
+# this is how i installed samba on debian 7.9
+
+cd /usr/local/src
+wget 'https://www.samba.org/samba/ftp/samba-latest.tar.gz'
+tar xf samba-latest.tar.gz
+cd samba-*
+
+apt-get update
+apt-get -y install libacl1-dev python-dev
+
+./configure \
+ --disable-cups \
+ --disable-iprint \
+ --with-quotas \
+ --enable-avahi \
+ --without-dnsupdate \
+ --disable-glusterfs \
+ --without-systemd \
+
+make
+make install
+
+cp smb.conf /etc/samba/

@@ -1,0 +1,175 @@
+#!/bin/sh
+
+# Astelegraph - Outbound Faxing Glue between Asterisk and Samba
+# Copyright (C) 2016 Jeremy Kister
+# http://gitub.com/jkister/astelegraph
+# http://jeremy.kister.net/
+
+
+VERSION=0.9
+
+echo " "
+
+while test $# -gt 0 ; do
+    case $1 in 
+        --*=*) arg=`echo $1 | sed 's/.*=//'` ;;
+        *) arg= ;;
+    esac
+
+    case $1 in
+        --help)
+            cat <<EOM
+the following syntax to ./configure is supported:
+
+   --prefix=PREFIX      install architecture-independent files in PREFIX
+                           [/usr/local]
+   --sysconfdir=DIR     astelegraph config [PREFIX/etc]
+   --scriptdir=DIR      astelegraph script [PREFIX/script]
+   --perl=PERL          full path to perl [/usr/bin/perl]
+   --help               show help message
+
+EOM
+            exit;
+            ;;
+        --perl*)
+            if [ "$arg" ]; then
+                if [ -x "$arg" ] ; then
+                    PERL=$arg
+                else
+                    echo "*** PERL: $arg is not executable"
+                    exit 1
+                fi
+            fi
+            ;;
+        --prefix*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    PREFIX=$arg
+                else
+                    echo "*** PREFIX: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        --scriptdir*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    SCRIPTDIR=$arg
+                else
+                    echo "*** SCRIPTDIR: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        --sysconfdir*)
+            if [ "$arg" ]; then
+                if [ -d "$arg" ] ; then
+                    SYSCONFDIR=$arg
+                else
+                    echo "*** SYSCONFDIR: $arg is not a directory"
+                    exit 1
+                fi
+            fi
+            ;;
+        *)
+            echo "unknown argument: $1"
+            exit 1
+	;;
+	esac
+	shift
+done
+
+
+if [ ! -x "$PERL" ] ; then
+	for dir in /usr/bin /usr/local/bin /bin ; do
+		if test -f $dir/perl ; then
+			PERL=$dir/perl
+			break
+		fi
+	done
+	if [ ! -x "$PERL" ] ; then
+		echo "could not find perl: specify --perl="
+		exit 1
+	fi
+fi
+
+echo "found perl: $PERL"
+
+PREFIX=${PREFIX-/usr/local}
+SCRIPTDIR=${SCRIPTDIR-$PREFIX/script}
+SYSCONFDIR=${SYSCONFDIR-$PREFIX/etc}
+
+for mod in Linux::Inotify2 Sys::Syslog Sys::SigAction Time::Local ; do
+    $PERL -e "use $mod";
+    if [ "$?" != 0 ] ; then
+        echo "cannot find Perl module $module"
+        echo ""
+        echo ' install Perl prerequisite $mod - then try ./configure again.'
+        exit 1
+    fi
+done
+
+cat <<EOM
+astelegraphd will be installed in: $SCRIPTDIR
+astelegraph.cfg will be installed in: $SYSCONFDIR
+ 
+if any of these values need changing, try ./configure --help
+ 
+Writing Makefile...
+EOM
+
+cat <<__EOM__ > Makefile
+
+SEDARG=s~__VERSION__~$VERSION~g; s~__PERL__~$PERL~g; \\
+       s~__SCRIPTDIR__~$SCRIPTDIR~g; \\
+       s~__SYSCONFDIR__~$SYSCONFDIR~g;
+
+BUILD = built/astelegraphd  built/astelegraph.init built/astelegraph.cfg
+CLEAN = \$(BUILD) Makefile
+PRE = built
+
+all: \$(BUILD) text
+
+built:
+	-mkdir built
+
+text:
+	@echo
+	@echo build complete.
+	@echo now run \'make install\'
+
+built/astelegraph.cfg: \$(PRE) in/astelegraph.cfg
+	sed "\$(SEDARG)" in/astelegraph.cfg > built/astelegraph.cfg
+
+built/astelegraph.init: \$(PRE) in/astelegraph.init
+	sed "\$(SEDARG)" in/astelegraph.init > built/astelegraph.init
+	@chmod a+x built/astelegraph.init
+
+built/astelegraphd: \$(PRE) in/astelegraphd
+	sed "\$(SEDARG)" in/astelegraphd > built/astelegraphd
+	@chmod a+x built/astelegraphd
+
+install: \$(BUILD)
+	-mkdir -p $SCRIPTDIR
+
+	if [ ! -f $SYSCONFDIR/astelegraph.cfg ] ; then \\
+		install -m 644 built/astelegraph.cfg $SYSCONFDIR ; \\
+	fi
+	install -m 755 built/astelegraphd $SCRIPTDIR
+	install -m 744 built/astelegraph.init /etc/init.d/astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc2.d/S94astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc3.d/S94astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc4.d/S94astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc5.d/S94astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc0.d/K28astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc5.d/K28astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc6.d/K28astelegraph 
+
+clean:
+	-rm \$(CLEAN)
+
+__EOM__
+
+
+echo " "
+echo "now type 'make' and then 'make install'"

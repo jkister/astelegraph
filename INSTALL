@@ -1,0 +1,31 @@
+
+Asterisk is a prerequisite.  See doc/INSTALL.asterisk
+ * extensions.conf must be changed.  See eg/extensions.conf
+Samba is a prerequisite.  See doc/INSTALL.samba
+ * smb.conf must be changed.  See eg/smb.conf
+
+
+./configure --help
+# read
+
+./configure
+make
+make install
+
+modify your [/etc/]astelegraph.cfg as appropriate.  Anything to the
+right of a semi-colon (;) or a hash (#) are ignored.  Blank lines are
+ignored.  Each line should should contain a <key>:<value>
+ * outcontext: context for outbound calls [outbound]
+               see eg/extensions.conf
+ * faxcontext: context for fax calls [astelegraph]
+               see eg/extensions.conf
+ * debug:      enable debug logging (0=off, 1=on) [0]
+ * extension:  extension in context to dial [tx]
+               see eg/extensions.conf
+ * facility:   syslog facility for logging [local6]
+ * mailfrom:   who to send report emails from [root@example.com]
+ * piddir:     directory to put PID file [/var/run]
+ * spooldir:   asterisk spool directory [/var/spool/asterisk]
+ * username:   switch to this less-privileged user after startup [nobody]
+               a dedicated 'astelegraph' (or just 'asterisk') user would
+               be appropriate here.
