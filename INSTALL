@@ -3,6 +3,8 @@ Asterisk is a prerequisite.  See doc/INSTALL.asterisk
  * extensions.conf must be changed.  See eg/extensions.conf
 Samba is a prerequisite.  See doc/INSTALL.samba
  * smb.conf must be changed.  See eg/smb.conf
+Ghostsript is a prerequisite for PDF/PS.
+ I installed right from https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs918/ghostscript-9.18-linux-x86_64.tgz
 
 
 ./configure --help
