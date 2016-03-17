@@ -7,7 +7,7 @@
 There are many examples how to make an incoming fax do things with Asterisk.  This package is designed to make outbound faxes prettier and easier.
 
 
-Astelegraph watched a folder: /var/spool/asterisk/fax/raw by default.  It expects a PDF, PS, or TIFF file to be dropped in whenever it should be faxed.  It doesn't matter how you get the file in there: ftp, http, scp, ... but the file must be named the following format:
+Astelegraph watches a folder: /var/spool/asterisk/fax/raw by default.  It expects a PDF, PS, or TIFF file to be dropped in whenever it should be faxed.  It doesn't matter how you get the file in there: ftp, http, scp, ... but the file must be named the following format:
  DESTNUMBER[-user@example.com][-YYYYMMDDHHMM].ext
 
  for example:
