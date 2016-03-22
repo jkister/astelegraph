@@ -61,6 +61,8 @@ mkdir -p /usr/local/src/asterisk
 cd /usr/local/src/asterisk
 wget http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-11-current.tar.gz
 tar -zxvf aster*
+rm asterisk-11-current.tar.gz
+cd asterisk-*
 bash ../../configs/%%-asterisk
 unset LANG
 make -j2 menuselect
