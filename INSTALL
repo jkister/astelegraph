@@ -31,3 +31,5 @@ ignored.  Each line should should contain a <key>:<value>
  * username:   switch to this less-privileged user after startup [nobody]
                a dedicated 'astelegraph' (or just 'asterisk') user would
                be appropriate here.
+
+/etc/init.d/astelegraph start

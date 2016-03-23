@@ -57,6 +57,7 @@ $CONFIG{spooldir}   ||= '/var/spool/asterisk';
 openlog($NAME,'pid',$CONFIG{facility});
 
 my %DIR = ( vsa =>  $CONFIG{spooldir},
+            fax => "$CONFIG{spooldir}/fax",    # just for mkdir
             out => "$CONFIG{spooldir}/fax/out",
             raw => "$CONFIG{spooldir}/fax/raw",
             tmp => "$CONFIG{spooldir}/fax/tmp",
@@ -65,11 +66,16 @@ my %DIR = ( vsa =>  $CONFIG{spooldir},
 
 my ($uid,$gid) = (getpwnam($CONFIG{username}))[2,3];
 
+unless( -d $DIR{fax} ){
+    mkdir( $DIR{fax}, 0755 ) || slowerr( "cannot mkdir $DIR{fax}: $!" );
+    chown( $uid, $gid, $DIR{fax} ) || slowerr( "cannot chown $DIR{fax}: $!" );
+}
+
 for my $dir (keys %DIR){
     next if -d $DIR{$dir};
 
-    mkdir( $DIR{$dir}, 0755 ) || slowerr( "cannot mkdir $DIR{dir}: $!" );
-    chown( $uid, $gid, $DIR{dir} ) || slowerr( "cannot chown $DIR{dir}: $!" );
+    mkdir( $DIR{$dir}, 0755 ) || slowerr( "cannot mkdir $DIR{$dir}: $!" );
+    chown( $uid, $gid, $DIR{dir} ) || slowerr( "cannot chown $DIR{$dir}: $!" );
 }
 
 my $childpid;

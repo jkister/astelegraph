@@ -100,9 +100,9 @@ SCRIPTDIR=${SCRIPTDIR-$PREFIX/script}
 SYSCONFDIR=${SYSCONFDIR-$PREFIX/etc}
 
 for mod in Linux::Inotify2 Sys::Syslog Sys::SigAction Time::Local ; do
-    $PERL -e "use $mod";
+    $PERL -e "use $mod" 2>/dev/null;
     if [ "$?" != 0 ] ; then
-        echo "cannot find Perl module $module"
+        echo "cannot find Perl module $mod"
         echo ""
         echo " install Perl prerequisite $mod - then try ./configure again."
         exit 1
