@@ -27,19 +27,20 @@ make -j2
 apt-get -y install binutils binutils-dev \
   curl \
   g++ git  \
-  libjansson-dev \
+  lamelibjansson-dev \
   libcurl4-openssl-dev \
   libncurses5-dev libnewt-dev  libspandsp-dev \
   libiksemel-dev libiksemel3 \
   libncurses5 libncurses5-dev \
   libsnmp-dev libspandsp2 libsqlite3-0 libsqlite3-dev libssl-dev \
   libtiff-tools \
-  libuuid-perl libuuid1 uuid-dev  \
+  libuuid-perl libuuid1  \
   libtonezone-dev libxml2 libxml2-dev \
   mpg123 \
   openssl \
   snmp snmpd sox subversion  sqlite3 \
-  tcpdump
+  tcpdump \
+  uuid-dev
 
 mkdir -p /usr/local/src/configs/
 cat <<__EOC__ > /usr/local/src/configs/%%-asterisk
