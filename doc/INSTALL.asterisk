@@ -37,7 +37,7 @@ apt-get -y install binutils binutils-dev \
   libuuid-perl libuuid1 uuid-dev  \
   libtonezone-dev libxml2 libxml2-dev \
   openssl \
-  snmp snmpd subversion  sqlite3 \
+  snmp snmpd sox subversion  sqlite3 \
   tcpdump
 
 mkdir -p /usr/local/src/configs/

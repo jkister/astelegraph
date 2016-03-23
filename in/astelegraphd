@@ -32,8 +32,7 @@ $CONFIG{config} ||= '__SYSCONFDIR__/astelegraph.cfg';
 if( open(my $confg, $CONFIG{config}) ){
     while(<$confg>){
         chop;
-        s/;.*//;
-        s/#.*//;
+        s/[;#].*//;
         next if /^\s*$/;
         if( /^(\S+)\s*:\s*(\S+)$/ ){
             $CONFIG{$1} = $2;
@@ -165,7 +164,7 @@ $i->watch($DIR{raw}, IN_CREATE,
             $dest{report} = $1;
             debug( "caught report email address: ", $dest{report} );
         }
-        if( $data =~ /-(\d{12})-?/ ){ ## YYYYMMDDHHSS
+        if( $data =~ /-(\d{12})-?/ ){ ## YYYYMMDDHHMM
             $dest{time} = $1;
             debug( "caught timestamp: ", $dest{time} );
         }
