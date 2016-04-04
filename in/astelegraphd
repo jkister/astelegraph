@@ -186,7 +186,7 @@ $i->watch($DIR{raw}, IN_CREATE,
             }
             debug( "renamed $fname to $spool" );
         }elsif( $type =~ /(?:pdf|ps)/i ){
-            my @arg = ( qw/gs -dNOPAUSE -q -sDEVICE=tiffg4 -dBATCH/,
+            my @arg = ( qw/gs -dNOPAUSE -q -sDEVICE=tiffg4 -dBATCH -g1728x1145 -r209x98/,
                         "-sOutputFile=${spool}",
                         ${fname}
                       );
