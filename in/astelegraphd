@@ -1,6 +1,6 @@
 #!__PERL__
 
-# Astelegraph - Outbound Faxing Glue between Asterisk and Samba
+# Astelegraph - Outbound Faxing Glue
 # Copyright (C) 2016 Jeremy Kister
 # http://gitub.com/jkister/astelegraph
 # http://jeremy.kister.net/
@@ -78,8 +78,27 @@ for my $dir (keys %DIR){
     chown( $uid, $gid, $DIR{dir} ) || slowerr( "cannot chown $DIR{$dir}: $!" );
 }
 
+my @queue;
+opendir(my $dir, $DIR{raw}) || slowerr( "cannot opendir $DIR{raw}: ", $! );
+for my $file (grep {!/^\./} readdir $dir){
+    # if we crash for any reason before file is processed, process it.
+    # as long as it's not more than 24 hours old.
+    my $mtime = (stat("$DIR{raw}/$file"))[9];
+    
+    my $dayago = (time() - 86400);
+    if( $mtime >= $dayago ){
+        push @queue, $file;
+        rename( "$DIR{raw}/$file", "$DIR{tmp}/$file" ) || slowerr( "cannot rename raw/$file to tmp/$file: ", $! );
+        verbose( "setting up $file for reprocessing." );
+    }else{  
+        verbose( "removing stale outbound file: $file" );
+        unlink( "$DIR{raw}/$file" ) || slowerr( "could not unlink raw/$file: ", $! );
+    }
+}
+closedir $dir;
+
 my $childpid;
-daemonize(60) unless $opt{f};
+daemonize(10) unless $opt{f};
 
 set_sig_handler('ALRM', sub { die "timeout!\n"; } );
 set_sig_handler('USR1', sub { $CONFIG{debug} = $CONFIG{debug} ? undef : 1; } );
@@ -104,8 +123,7 @@ verbose( "starting." );
 
 my $i = Linux::Inotify2->new || die "cannot create object: $!\n";
 
-# nb IN_CLOSE_WRITE doesnt deal with mv
-$i->watch($DIR{rpt}, IN_CREATE,
+$i->watch($DIR{rpt}, IN_CREATE | IN_MOVED_TO | IN_CLOSE_WRITE,
     sub {
         my $e = shift;
         my $fname = $e->fullname;
@@ -125,24 +143,22 @@ $i->watch($DIR{rpt}, IN_CREATE,
                       "\n";
             if( open(my $report, $fname) ){
                 while(<$report>){
-                    chomp;
-                    print $sm "$_\n";
+                    print $sm $_;
                 }
                 close $report;
                 close $sm;
-                unlink($report);
             }else{
-                verbose( "cant open report file: ", $! );
-                return;
+                verbose( "cant open report $fname: ", $! );
+                return; # report is not unlinked
             }
         }else{
             verbose( "cant open pipe to sendmail: ", $! );
-            return
         }
+        unlink($fname);
     }
 );
 
-$i->watch($DIR{raw}, IN_CREATE,
+$i->watch($DIR{raw}, IN_CREATE | IN_MOVED_TO | IN_CLOSE_WRITE,
     sub {
         my $e = shift;
         my $fname = $e->fullname;
@@ -254,6 +270,14 @@ __EOC__
     }
 );
 
+for my $file (@queue){
+    # QQQ bleh
+    my $sleep = int(rand(5))+10;
+    verbose( "$file queued for $sleep seconds." );
+
+    system( "(sleep $sleep && mv $DIR{tmp}/$file $DIR{raw}/$file) &" ) == 0 || slowerr( "couldnt execute cmd: ", $? );
+}
+
 1 while $i->poll;
 
 sub verbose {
@@ -280,6 +304,7 @@ sub daemonize {
 
     chdir('/');
     fork && exit;
+    warn "$$\n";
     close STDIN;   open( STDIN,  '<',  "/dev/null" );
     close STDOUT;  open( STDOUT, '>>', "/dev/null" );
     close STDERR;  open( STDERR, '>>', "/dev/null" );
@@ -308,9 +333,11 @@ sub daemonize {
 }
 
 sub sighandler {
-    unlink( "$CONFIG{piddir}/$NAME.pid" ) || verbose( "cannot unlink $CONFIG{piddir}/$NAME.pid: $!" );
-    kill "TERM", $childpid;
-    wait;
+    if( $childpid > 0 ){
+        unlink( "$CONFIG{piddir}/$NAME.pid" ) || verbose( "cannot unlink $CONFIG{piddir}/$NAME.pid: $!" );
+        kill "TERM", $childpid;
+        wait;
+    }
     verbose( "caught signal SIG$_[0] - exiting" );
     exit;
 }

@@ -6,7 +6,7 @@
 # http://jeremy.kister.net/
 
 
-VERSION=0.92
+VERSION=0.93
 
 echo " "
 
@@ -164,6 +164,9 @@ install: \$(BUILD)
 	ln -f -s /etc/init.d/astelegraph /etc/rc0.d/K28astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc5.d/K28astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc6.d/K28astelegraph 
+
+test: all
+	$PERL -wTc built/astelegraphd
 
 clean:
 	-rm \$(CLEAN)
