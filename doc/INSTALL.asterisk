@@ -36,6 +36,7 @@ apt-get -y install binutils binutils-dev \
   libtiff-tools \
   libuuid-perl libuuid1  \
   libtonezone-dev libxml2 libxml2-dev \
+  lynx \
   mpg123 \
   openssl \
   snmp snmpd sox subversion  sqlite3 \
