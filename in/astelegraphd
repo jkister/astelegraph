@@ -21,6 +21,7 @@ getopts('Dfhv', \%opt);
 # help
 # version
 
+
 help() && exit if $opt{h};
 VERSION() && exit if $opt{v};
 
@@ -53,6 +54,8 @@ $CONFIG{piddir}     ||= '/var/run';
 $CONFIG{username}   ||= 'nobody';
 $CONFIG{facility}   ||= 'local6';
 $CONFIG{spooldir}   ||= '/var/spool/asterisk';
+
+$ENV{PATH} = $CONFIG{path} if $CONFIG{path};
 
 openlog($NAME,'pid',$CONFIG{facility});
 
