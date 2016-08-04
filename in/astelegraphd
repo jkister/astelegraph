@@ -14,7 +14,7 @@ use POSIX qw(setsid strftime);
 use Sys::SigAction qw(set_sig_handler);
 
 my %opt;
-getopts('Dfhv', \%opt);
+getopts('Dc:fhv', \%opt);
 # Debug
 # config file
 # foreground
@@ -29,7 +29,12 @@ my $NAME = 'astelegraph';
 my $VERSION = '__VERSION__';
 
 my %CONFIG;
-$CONFIG{config} ||= '__SYSCONFDIR__/astelegraph.cfg';
+$CONFIG{config} = $opt{c} ? $opt{c} : '__SYSCONFDIR__/astelegraph.cfg';
+if( $opt{D} ){
+    # overrides config file
+    $CONFIG{debug} = $opt{D};
+}
+
 if( open(my $confg, $CONFIG{config}) ){
     while(<$confg>){
         chop;
@@ -43,10 +48,15 @@ if( open(my $confg, $CONFIG{config}) ){
     }
     close $confg;
 }
-if( $opt{D} ){
-    # overrides config file
-    $CONFIG{debug} = $opt{D};
+
+openlog($NAME,'pid',$CONFIG{facility});
+if( $CONFIG{path} ){
+    verbose( "adding to path: ", $CONFIG{path} );
+    my $oldpath = $ENV{PATH};
+    $ENV{PATH} = $CONFIG{path} . ':' . $oldpath;
+    debug( "new path: ", $ENV{PATH} );
 }
+
 $CONFIG{faxcontext} ||= 'astelegraph';
 $CONFIG{outcontext} ||= 'outbound';
 $CONFIG{extension}  ||= 'tx';
@@ -56,8 +66,6 @@ $CONFIG{facility}   ||= 'local6';
 $CONFIG{spooldir}   ||= '/var/spool/asterisk';
 
 $ENV{PATH} = $CONFIG{path} if $CONFIG{path};
-
-openlog($NAME,'pid',$CONFIG{facility});
 
 my %DIR = ( vsa =>  $CONFIG{spooldir},
             fax => "$CONFIG{spooldir}/fax",    # just for mkdir
@@ -209,9 +217,11 @@ $i->watch($DIR{raw}, IN_CREATE | IN_MOVED_TO,
                         "-sOutputFile=${spool}",
                         ${fname}
                       );
-            unless( system( @arg ) == 0 ){
+            my $res = system( @arg );
+            if( $res ){
+                my $real = $res >> 8;
                 unlink($fname);
-                verbose( "gs fail: $?" );
+                verbose( "gs fail: $res => exit code: $real" );
                 return;
             }
             unlink($fname);
@@ -278,7 +288,7 @@ for my $file (@queue){
     my $sleep = int(rand(15))+10; # spread out call files for asterisk
     verbose( "$file queued for $sleep seconds." );
 
-    system( "(sleep $sleep && mv $DIR{tmp}/$file $DIR{raw}/$file) &" ) == 0 || slowerr( "couldnt execute cmd: ", $? );
+    system( "(sleep $sleep && cp $DIR{tmp}/$file $DIR{raw}/${file} && rm $DIR{tmp}/$file) &" ) == 0 || slowerr( "couldnt execute cmd: ", $? );
 }
 
 1 while $i->poll;
