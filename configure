@@ -6,7 +6,7 @@
 # http://jeremy.kister.net/
 
 
-VERSION=0.94
+VERSION=0.96
 
 echo " "
 
@@ -156,14 +156,14 @@ install: \$(BUILD)
 		install -m 644 built/astelegraph.cfg $SYSCONFDIR ; \\
 	fi
 	install -m 755 built/astelegraphd $SCRIPTDIR
-	install -m 744 built/astelegraph.init /etc/init.d/astelegraph
+	install -m 755 built/astelegraph.init /etc/init.d/astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc2.d/S94astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc3.d/S94astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc4.d/S94astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc5.d/S94astelegraph
 	ln -f -s /etc/init.d/astelegraph /etc/rc0.d/K28astelegraph
-	ln -f -s /etc/init.d/astelegraph /etc/rc5.d/K28astelegraph
-	ln -f -s /etc/init.d/astelegraph /etc/rc6.d/K28astelegraph 
+	ln -f -s /etc/init.d/astelegraph /etc/rc1.d/K28astelegraph
+	ln -f -s /etc/init.d/astelegraph /etc/rc6.d/K28astelegraph
 
 test: all
 	$PERL -wTc built/astelegraphd

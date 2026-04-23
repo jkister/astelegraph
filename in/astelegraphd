@@ -86,17 +86,17 @@ for my $dir (keys %DIR){
     next if -d $DIR{$dir};
 
     mkdir( $DIR{$dir}, 0755 ) || slowerr( "cannot mkdir $DIR{$dir}: $!" );
-    chown( $uid, $gid, $DIR{dir} ) || slowerr( "cannot chown $DIR{$dir}: $!" );
+    chown( $uid, $gid, $DIR{$dir} ) || slowerr( "cannot chown $DIR{$dir}: $!" );
 }
 
 my @queue;
 opendir(my $dir, $DIR{raw}) || slowerr( "cannot opendir $DIR{raw}: ", $! );
 for my $file (grep {!/^\./} readdir $dir){
     # if we crash for any reason before file is processed, process it.
-    # as long as it's not more than 24 hours old.
+    # as long as it's not more than 12 hours old.
     my $mtime = (stat("$DIR{raw}/$file"))[9];
     
-    my $dayago = (time() - 86400);
+    my $dayago = (time() - 43200);
     if( $mtime >= $dayago ){
         push @queue, $file;
         rename( "$DIR{raw}/$file", "$DIR{tmp}/$file" ) || slowerr( "cannot rename raw/$file to tmp/$file: ", $! );
@@ -134,7 +134,7 @@ verbose( "starting." );
 
 my $i = Linux::Inotify2->new || die "cannot create object: $!\n";
 
-$i->watch($DIR{rpt}, IN_CREATE | IN_MOVED_TO,
+$i->watch($DIR{rpt}, IN_CLOSE_WRITE | IN_MOVED_TO,
     sub {
         my $e = shift;
         my $fname = $e->fullname;
@@ -165,7 +165,7 @@ $i->watch($DIR{rpt}, IN_CREATE | IN_MOVED_TO,
         }else{
             verbose( "cant open pipe to sendmail: ", $! );
         }
-        unlink($fname);
+        unlink($fname) || verbose( "cannot unlink $fname: $!" );
     }
 );
 
@@ -177,7 +177,7 @@ $i->watch($DIR{raw}, IN_CREATE | IN_MOVED_TO,
 
         unless( $fname =~ m#/([^\/]+)\.(pdf|ps|tiff)$#i ){
             verbose( "file pattern fail: $fname" );
-            unlink($fname);
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
             return;
         }
         my ($data,$type) = ($1,$2);
@@ -189,7 +189,7 @@ $i->watch($DIR{raw}, IN_CREATE | IN_MOVED_TO,
             $dest{phone} = $1;
         }else{
             verbose( "unkown filename format: ", $fname );
-            unlink($fname);
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
             return;
         }
 
@@ -208,26 +208,26 @@ $i->watch($DIR{raw}, IN_CREATE | IN_MOVED_TO,
             # nothing needed except rename
             unless( rename($fname,$spool) ){
                 verbose( "can't rename $fname to $spool: ", $! );
-                unlink($fname);
+                unlink($fname) || verbose( "cannot unlink $fname: $!" );
                 return;
             }
             debug( "renamed $fname to $spool" );
         }elsif( $type =~ /(?:pdf|ps)/i ){
-            my @arg = ( qw/gs -dNOPAUSE -q -sDEVICE=tiffg4 -dBATCH -g1728x1145 -r209x98/,
+            my @arg = ( qw/gs -dNOPAUSE -q -sDEVICE=tiffg4 -dBATCH -g1728x1145 -r204x98/,
                         "-sOutputFile=${spool}",
                         ${fname}
                       );
             my $res = system( @arg );
             if( $res ){
                 my $real = $res >> 8;
-                unlink($fname);
+                unlink($fname) || verbose( "cannot unlink $fname: $!" );
                 verbose( "gs fail: $res => exit code: $real" );
                 return;
             }
-            unlink($fname);
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
         }else{
             verbose( "unkown file format: ", $type );
-            unlink($fname);
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
             return;
         }
 
@@ -253,7 +253,7 @@ __EOC__
             close $call;
         }else{
             verbose( "couldnt write to callfile: ", $! );
-            unlink($fname);
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
             return;
         }
 
@@ -265,17 +265,17 @@ __EOC__
             debug( "setting time on $cfile: ", $time );
             unless( utime($time, $time, "$DIR{tmp}/$cfile") ){
                 verbose( "cant set utime on $cfile: ", $! );
-                unlink("$DIR{tmp}/$cfile");
-                unlink($fname);
-                unlink($spool);
+                unlink("$DIR{tmp}/$cfile") || verbose( "cannot unlink tmp/$cfile: $!" );
+                unlink($fname) || verbose( "cannot unlink $fname: $!" );
+                unlink($spool) || verbose( "cannot unlink $spool: $!" );
                 return;
             }
         }
         unless( rename("$DIR{tmp}/$cfile", "$DIR{vsa}/outgoing/$cfile") ){
             verbose( "can't rename tmp/$cfile outgoing/$cfile: ", $! );
-            unlink("$DIR{tmp}/$cfile");
-            unlink($fname);
-            unlink($spool);
+            unlink("$DIR{tmp}/$cfile") || verbose( "cannot unlink tmp/$cfile: $!" );
+            unlink($fname) || verbose( "cannot unlink $fname: $!" );
+            unlink($spool) || verbose( "cannot unlink $spool: $!" );
             return;
         }
         
@@ -283,12 +283,23 @@ __EOC__
     }
 );
 
-for my $file (@queue){
-    # QQQ bleh
-    my $sleep = int(rand(15))+10; # spread out call files for asterisk
-    verbose( "$file queued for $sleep seconds." );
-
-    system( "(sleep $sleep && cp $DIR{tmp}/$file $DIR{raw}/${file} && rm $DIR{tmp}/$file) &" ) == 0 || slowerr( "couldnt execute cmd: ", $? );
+if (@queue) {
+    unless (fork) {
+        my $start = time();
+        my $idx = 0;
+        for my $file (@queue) {
+            # 2 faxes/min capacity: pair index (int/2) sets the minute slot,
+            # position within pair (idx%2 * 5s) staggers the two within that slot
+            my $due = $start + 10 + int($idx/2)*60 + ($idx%2)*5;
+            $idx++;
+            my $wait = $due - time();
+            verbose( "$file scheduled in ${wait}s." );
+            sleep $wait if $wait > 0;
+            rename("$DIR{tmp}/$file", "$DIR{raw}/$file")
+                || verbose("cannot rename tmp/$file to raw/$file: $!");
+        }
+        exit;
+    }
 }
 
 1 while $i->poll;
