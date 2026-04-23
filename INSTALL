@@ -14,7 +14,7 @@ I like using with Samba.  See doc/INSTALL.samba
 make
 make install
 
-modify your [/etc/]astelegraph.cfg as appropriate.  Anything to the
+modify your astelegraph.cfg (default: /usr/local/etc/astelegraph.cfg) as appropriate.  Anything to the
 right of a semi-colon (;) or a hash (#) are ignored.  Blank lines are
 ignored.  Each line should should contain a <key>:<value>
  * outcontext: context for outbound calls [outbound]
@@ -31,5 +31,9 @@ ignored.  Each line should should contain a <key>:<value>
  * username:   switch to this less-privileged user after startup [nobody]
                a dedicated 'astelegraph' (or just 'asterisk') user would
                be appropriate here.
+ * path:       prepend this to PATH, useful if sendmail or gs are not in
+               the default PATH
+
+make test  # optional: syntax-checks the built script
 
 /etc/init.d/astelegraph start

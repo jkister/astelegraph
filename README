@@ -1,7 +1,7 @@
 
 # Astelegraph - Outbound Faxing Glue between Asterisk and Samba
 # Copyright (C) 2016 Jeremy Kister
-# http://gitub.com/jkister/astelegraph
+# http://github.com/jkister/astelegraph
 # http://jeremy.kister.net/
 
 There are many examples how to make an incoming fax do things with Asterisk.  This package is designed to make outbound faxes prettier and easier.
@@ -13,7 +13,7 @@ Astelegraph watches a folder: /var/spool/asterisk/fax/raw by default.  It expect
  for example:
   2155551234.pdf - blindly fax document to 215-555-1234
   2155551234-user@example.com.pdf - fax document to 215-555-1234 and email a report to user@example.com
-  2155551234-203903141344.pdf - bindly fax document to 215-555-1234 at 1:44pm on March 14, 2039
+  2155551234-203903141344.pdf - blindly fax document to 215-555-1234 at 1:44pm on March 14, 2039
   2155551234-user@example.com-203903141344.pdf - fax document to 215-555-1234 at 1:44pm on March 14, 2039 and email a report to user@example.com
   2155551234-203903141344-user@example.com.pdf - [same as above]
 
